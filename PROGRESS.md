@@ -1,8 +1,11 @@
 # Progress — Zapping HLS task
 
-Last updated: 2026-08-23
+Last updated: 2026-08-25
 
-## Current state: backend playlist + segment serving works
+Working notes for picking the task back up. Architecture and design rationale
+live in [README.md](README.md); this file tracks state and what is left.
+
+## Current state: backend + player work end to end
 
 Run it:
 
@@ -22,59 +25,9 @@ Verified working:
 - Path traversal blocked: raw, URL-encoded and double-encoded all 404.
 - `GET /segments/segment.m3u8` returns 404 — the file exists on disk but is
   not in the allowlist. Allowlist beats sanitizing.
-
-## File layout
-
-```
-cmd/server/main.go        entrypoint: load pool, start ticker, wire routes
-internal/stream/
-  pool.go                 Segment + Pool types (static, parsed once)
-  parser.go               LoadPool / parseHeader / parseSegments / checkVersionLine
-  live.go                 LiveState: sliding window, ticker, mutex
-  config.go               SupportedVersion constant
-internal/api/
-  handlers.go             Stream type + StreamHandler + SegmentHandler
-  router.go               route constants + RegisterRoutes
-```
-
-## Key design decisions (and why)
-
-**Pool is static, LiveState is mutable.** `Pool` holds only what is reusable
-raw material for generating playlists: `Segments` and a computed
-`TargetDuration`. Header tags from the source file are validated but not
-stored — we generate our own playlist, we do not echo the source one.
-
-**`currentIndex` != `mediaSequence`.** `currentIndex` wraps with `% total`
-because we recycle 64 physical files. `mediaSequence` never wraps — HLS
-requires it to grow monotonically or the player thinks the stream broke.
-In a real live stream these would be the same number; they diverge here only
-because we simulate infinity from finite input.
-
-**RWMutex, one writer many readers.** `Advance()` (ticker, every 10s) takes
-`Lock`. `Window()` and `MediaSequence()` take `RLock`. The lock is not about
-protecting `pool.Segments` (immutable after parse) — it protects
-`currentIndex` and `mediaSequence`, and guarantees the three reads inside
-`Window()` all see the same index, so the window is never torn.
-
-**Two-phase parser.** `parseHeader` consumes until the first `#EXTINF:` and
-returns that line; `parseSegments` continues from it. RFC 8216 only
-guarantees that header tags precede segments — not their relative order —
-so reading a fixed number of header lines would break on valid files.
-
-**Dependency injection over globals.** `Stream` holds `pool`, `liveState`,
-`segmentsDir`, `validSegments`. Handlers are methods on it, so no closures
-and no package-level mutable state. Own `http.NewServeMux()` instead of
-`DefaultServeMux` — the default is global and any imported package can
-register routes on it (e.g. `net/http/pprof`).
-
-**Allowlist over sanitizing.** `validSegments` is a `map[string]struct{}`
-built once in `NewStream` from the pool. Requests for anything not in it get
-404, which is stronger than `filepath.Base` — that would still serve any
-file inside the directory.
-
-**RAM.** The 64 `.ts` files total ~480MB, so segment bytes are never
-preloaded. Only parsed metadata lives in memory; `http.ServeFile` streams
-from disk in 32KB chunks per request.
+- The player at `/` plays continuously in the browser. After 8s: `readyState`
+  4, `currentTime` 20.9, 1920x1080, ~50s buffered, 5 playlist reloads, no
+  errors.
 
 ## Go concepts covered so far
 
@@ -93,11 +46,25 @@ shadowing (local variable vs imported package name); `time.Ticker` and channels.
 1. **`SEGMENTS_DIR` as env var.** Currently hardcoded in `main.go` as
    `"hls test/hls test"`. This is real config — it changes between local and
    Docker — unlike the route paths, which are API contract and stay constants.
-2. **Frontend**: 3 pages (signup, login, player) with HLS.js pointed at
-   `/playlist.m3u8`.
+2. **Signup and login pages.** The spec asks for three pages; the player
+   exists, these two do not.
 3. **Auth**: HttpOnly cookies, middleware guarding the player route,
-   `users` + `sessions` tables in Postgres.
-4. **Dockerfile** — keep it simple.
+   `users` + `sessions` tables in a database. New Go ground here:
+   `database/sql`, middleware as `func(http.Handler) http.Handler`, and
+   request context.
+4. **Dockerfile** — keep it simple. Open question: the `.ts` files are
+   gitignored, so they must be mounted or copied in from outside the repo.
 
 Deferred on purpose: N livestreams via `map[string]*LiveState`; a parser
 factory keyed by HLS version.
+
+## Notes on the spec
+
+- The statement says the livestream is "generado en NodeJS" while its opening
+  line asks for "un proyecto en Go lang" — a copy-paste artifact, not a real
+  requirement.
+- Its example playlist shows 4 segments with `TARGETDURATION:6`, but the prose
+  asks for "30s de video por request (3 segmentos)". We follow the prose,
+  which also matches the 10-second segments actually provided.
+- "eliminar el último segmento (primero de la lista)" means the oldest one,
+  which is first in the playlist. That is what `Advance()` does.
