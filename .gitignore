@@ -11,3 +11,6 @@ hls test/**/*.ts
 # macOS junk from the provided zip
 .DS_Store
 __MACOSX/
+
+# Browser automation artifacts
+.playwright-mcp/

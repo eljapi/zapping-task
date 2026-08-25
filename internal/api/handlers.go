@@ -54,19 +54,22 @@ func (s *Stream) StreamHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Stream) SegmentHandler(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimPrefix(r.URL.Path, SegmentsPrefix)
 
-	/*Security check for malicious path traversal like ../../etc/pwd*/
+	/*Security check for malicious path traversal like ../../etc/passwd*/
 	if _, ok := s.validSegments[name]; !ok {
 		http.NotFound(w, r)
 		return
 	}
 
+	/* Setting MimeType */
 	w.Header().Set("Content-Type", "video/mp2t")
 
 	/*
-		Instead of using os.ReadFile(path), that will cause complete load of file on heap before send the file through tcp
-		With http.ServeFile we send a fixed chunk 32KB (or 0 with page cache to socket)continiously until full file is sent.
-		Every request will use 32KB of heap when sending the file. With ReadFile this cost the
+		Instead of using os.ReadFile(path), which would load the complete file on the heap before sending it through tcp,
+		with http.ServeFile we send fixed 32KB chunks (or 0, straight from page cache to socket) continuously until the full file is sent.
+		Every request uses 32KB of heap when sending the file. With ReadFile this costs the
 		complete size of the file.
+
+		Also we take advantage of the built-in Content-Range request handling returning 206 partial content
 
 	*/
 	http.ServeFile(w, r, filepath.Join(s.segmentsDir, name))

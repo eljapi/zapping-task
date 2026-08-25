@@ -11,7 +11,8 @@ const (
 This registers our handlers onto the given ServeMux
 */
 
-func RegisterRoutes(mux *http.ServeMux, s *Stream) {
+func RegisterRoutes(mux *http.ServeMux, s *Stream, webDir string) {
 	mux.HandleFunc(PlaylistPath, s.StreamHandler)
 	mux.HandleFunc(SegmentsPrefix, s.SegmentHandler)
+	mux.Handle("/", http.FileServer(http.Dir(webDir)))
 }

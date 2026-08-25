@@ -13,6 +13,7 @@ import (
 func main() {
 
 	const segmentsDir = "hls test/hls test"
+	const webDir = "web"
 
 	pool, err := stream.LoadPool(segmentsDir + "/segment.m3u8")
 
@@ -26,7 +27,7 @@ func main() {
 	liveStream := api.NewStream(pool, liveState, segmentsDir)
 
 	mux := http.NewServeMux()
-	api.RegisterRoutes(mux, liveStream)
+	api.RegisterRoutes(mux, liveStream, webDir)
 
 	log.Fatal(http.ListenAndServe(":8080", mux))
 }
