@@ -1,0 +1,13 @@
+# HLS media assets (~480MB) — required at runtime, not tracked in git
+hls test/**/*.ts
+
+# Compiled binaries
+/server
+/zapping-task
+
+# Editor
+.vscode/
+
+# macOS junk from the provided zip
+.DS_Store
+__MACOSX/
