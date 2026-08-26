@@ -30,7 +30,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	conn, err := db.Connect(ctx, databaseURL)
 	if err != nil {
 		log.Fatal(err)
@@ -47,5 +49,14 @@ func main() {
 	mux := http.NewServeMux()
 	api.RegisterRoutes(mux, liveStream, webDir)
 
-	log.Fatal(http.ListenAndServe(":8080", mux))
+	server := &http.Server{
+		Addr:              ":8080",
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+
+	log.Fatal(server.ListenAndServe())
 }

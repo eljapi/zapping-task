@@ -56,6 +56,11 @@ The 64 `.ts` files are gitignored (480 MB). They must already be in
   not in the allowlist. Allowlist beats sanitizing.
 - Player at `/` plays continuously. After 8s: `readyState` 4, `currentTime`
   20.9, 1920x1080, ~50s buffered, 5 playlist reloads, no errors.
+- Server timeouts do not truncate streaming. With a 150 KB/s client, a 5.3 MB
+  segment (~35s, well past the 15s global `WriteTimeout`) arrives complete.
+  Removing the per-request deadline extension truncates it to 4,541,440 bytes
+  **while still returning 200** — silent corruption, which is why the
+  extension matters.
 - DB layer round trip: user created, duplicate email rejected with
   `ErrEmailTaken`, case-insensitive lookup, missing user gives `ErrNotFound`,
   valid session resolves to its user, **expired session rejected**, deleted
@@ -100,6 +105,30 @@ statements, not from an ORM.
 Dockerfile for two forms, and it pushes toward the SPA-plus-token pattern that
 OWASP warns about. Server-served pages plus cookies make the secure path the
 default one.
+
+## Timeout notes
+
+`http.ListenAndServe` applies **no timeouts at all**, which leaves the server
+open to Slowloris: a client that opens a socket and dribbles a byte every few
+seconds holds a goroutine indefinitely. The server is now built explicitly:
+
+| Field | Value | Purpose |
+|---|---|---|
+| `ReadHeaderTimeout` | 5s | The actual Slowloris defence |
+| `ReadTimeout` | 10s | Whole request body |
+| `WriteTimeout` | 15s | Whole response |
+| `IdleTimeout` | 60s | Keep-alive connections |
+
+The read-side timeouts are free for streaming, because a video request sends
+nothing. `WriteTimeout` is the dangerous one: it is an absolute deadline on
+the entire response, so a 5 MB segment on a slow connection would be cut.
+Rather than loosening it globally, `SegmentHandler` extends its own deadline
+with `http.NewResponseController(w).SetWriteDeadline(...)` (Go 1.20+): strict
+by default, explicit exception only where streaming happens.
+
+The database connection in `main` is likewise bounded by
+`context.WithTimeout(..., 5*time.Second)`. Without it, a host that silently
+drops packets would hang startup forever with no error.
 
 ## DB layer notes
 

@@ -5,9 +5,12 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"zapping-task/internal/stream"
 )
+
+const segmentWriteTimeout = 2 * time.Minute
 
 /*
 With this we replace "closure", no need to return func(w,r){...} to both
@@ -62,6 +65,11 @@ func (s *Stream) SegmentHandler(w http.ResponseWriter, r *http.Request) {
 
 	/* Setting MimeType */
 	w.Header().Set("Content-Type", "video/mp2t")
+
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Now().Add(segmentWriteTimeout)); err != nil {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
 
 	/*
 		Instead of using os.ReadFile(path), which would load the complete file on the heap before sending it through tcp,
