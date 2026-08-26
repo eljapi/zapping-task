@@ -42,13 +42,19 @@ func NewStream(pool *stream.Pool, liveState *stream.LiveState, segmentsDir strin
 func (s *Stream) StreamHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 
+	playlist := s.liveState.Playlist()
+
 	fmt.Fprintf(w, "#EXTM3U\n")
 	fmt.Fprintf(w, "#EXT-X-VERSION:%d\n", stream.SupportedVersion)
 	fmt.Fprintf(w, "#EXT-X-TARGETDURATION:%d\n", s.pool.TargetDuration)
-	fmt.Fprintf(w, "#EXT-X-MEDIA-SEQUENCE:%d\n", s.liveState.MediaSequence())
+	fmt.Fprintf(w, "#EXT-X-MEDIA-SEQUENCE:%d\n", playlist.MediaSequence)
+	fmt.Fprintf(w, "#EXT-X-DISCONTINUITY-SEQUENCE:%d\n", playlist.DiscontinuitySequence)
 
 	/*We loop the slice returned by method Window and we build the m3u8 EXTINF section*/
-	for _, segment := range s.liveState.Window() {
+	for _, segment := range playlist.Segments {
+		if segment.Discontinuity {
+			fmt.Fprintf(w, "#EXT-X-DISCONTINUITY\n")
+		}
 		fmt.Fprintf(w, "#EXTINF:%f,\n", segment.Duration)
 		fmt.Fprintf(w, "%s%s\n", SegmentsPrefix, segment.Name)
 	}

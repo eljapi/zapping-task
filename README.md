@@ -167,3 +167,18 @@ immediately while a wrong password spends ~40ms in bcrypt, and that gap reveals
 which addresses are registered. The unknown-email path deliberately runs a
 throwaway comparison so both take the same time, and both return the same
 message.
+
+**Signalling the loop point.** Recycling a finite pool means splicing the last
+segment onto the first, where the media timestamps drop back by the length of
+the whole asset. A player tolerates a rising media sequence but not a timeline
+that runs backwards; without a marker it simply freezes while the playlist
+keeps moving. `EXT-X-DISCONTINUITY` is emitted at that seam, which RFC 8216
+requires whenever the timestamp sequence changes, and the accompanying
+`EXT-X-DISCONTINUITY-SEQUENCE` counts only the seams that fall *before* the
+current playlist, so a segment keeps the same discontinuity number across
+reloads.
+
+**One snapshot per playlist.** `Playlist()` returns the media sequence, the
+discontinuity sequence and the segment window together under a single read
+lock. Reading them through separate calls would let a tick land in between and
+produce a playlist whose header disagreed with its own segment list.

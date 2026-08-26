@@ -56,6 +56,13 @@ The 64 `.ts` files are gitignored (480 MB). They must already be in
   not in the allowlist. Allowlist beats sanitizing.
 - Player at `/` plays continuously. After 8s: `readyState` 4, `currentTime`
   20.9, 1920x1080, ~50s buffered, 5 playlist reloads, no errors.
+- Playback survives the loop point. Starting three segments from the end and
+  watching in a browser, `currentTime` climbed 6.09 -> 71.09 without a stall,
+  crossing the seam at 24.6s with `readyState` 4 and no errors. The playlist
+  shows `#EXT-X-DISCONTINUITY` appearing immediately before `segment0.ts` as it
+  wraps in.
+- `go test -race` with four concurrent readers against the ticker reports no
+  data races.
 - Server timeouts do not truncate streaming. With a 150 KB/s client, a 5.3 MB
   segment (~35s, well past the 15s global `WriteTimeout`) arrives complete.
   Removing the per-request deadline extension truncates it to 4,541,440 bytes
@@ -126,6 +133,38 @@ statements, not from an ORM.
 Dockerfile for two forms, and it pushes toward the SPA-plus-token pattern that
 OWASP warns about. Server-served pages plus cookies make the secure path the
 default one.
+
+## Discontinuity notes
+
+The pool is a finite VOD cut into 64 segments, so looping it means splicing
+`segment63` (which starts at 631.4s) straight onto `segment0` (which starts at
+1.4s). The presentation timestamps jump **backwards by 630 seconds** at that
+seam. A player handles a rising media sequence fine, but it cannot handle a
+timeline that runs backwards: it waits for a time that already passed and
+freezes, while the playlist keeps advancing. That is the "stuck picture,
+climbing media sequence" symptom, and it appears only after a full cycle —
+64 x 10s = 640 seconds in.
+
+RFC 8216 is explicit that `EXT-X-DISCONTINUITY` **MUST** be present when the
+"timestamp sequence" changes, which is exactly this case. The tag tells the
+player to reset its timeline, and neither it nor `EXT-X-DISCONTINUITY-SEQUENCE`
+is gated to a protocol version, so `EXT-X-VERSION:3` stays valid.
+
+Two subtleties, both covered by tests in `internal/stream/live_test.go`:
+
+- **The very first playlist carries no discontinuity.** Segment 0 on the first
+  pass is a genuine start, not a seam.
+- **`EXT-X-DISCONTINUITY-SEQUENCE` counts seams *before* the playlist**, not
+  including one inside it. Per the RFC a segment's discontinuity number is the
+  header value plus the tags preceding it, so counting a seam in both places
+  would make the same segment change number between reloads and desynchronise
+  the player. The count is therefore `(mediaSequence - 1) / total`, not
+  `mediaSequence / total`.
+
+`Playlist()` replaced the old `Window()` and `MediaSequence()` pair. Those were
+two separate lock acquisitions, so a tick landing between them would emit a
+playlist whose `MEDIA-SEQUENCE` did not match its own segments. One method now
+returns the whole snapshot under a single read lock.
 
 ## Timeout notes
 

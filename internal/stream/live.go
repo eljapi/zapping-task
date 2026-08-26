@@ -5,11 +5,24 @@ import (
 	"time"
 )
 
+const WindowSize = 3
+
 type LiveState struct {
 	mu            sync.RWMutex
 	pool          *Pool
 	currentIndex  int
 	mediaSequence int
+}
+
+type WindowSegment struct {
+	Segment
+	Discontinuity bool
+}
+
+type Playlist struct {
+	MediaSequence         int
+	DiscontinuitySequence int
+	Segments              []WindowSegment
 }
 
 /*
@@ -29,19 +42,32 @@ func NewLiveState(pool *Pool) *LiveState {
 This function reads the shared mutable currentIndex, needs Read Lock
 so the three reads see a consistent value
 */
-func (ls *LiveState) Window() []Segment {
+func (ls *LiveState) Playlist() Playlist {
 	/* when reading, RLock/RUnlock*/
 	ls.mu.RLock()
 	defer ls.mu.RUnlock()
 
 	total := len(ls.pool.Segments)
-	window := make([]Segment, 3)
-	for i := range 3 {
+	segments := make([]WindowSegment, WindowSize)
+	for i := range WindowSize {
 		//We restart the stream when reaching the last segment
-		window[i] = ls.pool.Segments[(ls.currentIndex+i)%total]
+		index := (ls.currentIndex + i) % total
+		segments[i] = WindowSegment{
+			Segment:       ls.pool.Segments[index],
+			Discontinuity: index == 0 && ls.mediaSequence+i > 0,
+		}
 	}
 
-	return window
+	discontinuitySequence := 0
+	if ls.mediaSequence > 0 {
+		discontinuitySequence = (ls.mediaSequence - 1) / total
+	}
+
+	return Playlist{
+		MediaSequence:         ls.mediaSequence,
+		DiscontinuitySequence: discontinuitySequence,
+		Segments:              segments,
+	}
 }
 
 /*When writing, Lock/Unlock, protects against writter vs reader*/
@@ -56,14 +82,6 @@ func (ls *LiveState) Advance() {
 	ls.currentIndex = (ls.currentIndex + 1) % total
 	/* media sequence needs to only increase to follow the rules of m3u8 */
 	ls.mediaSequence++
-}
-
-/* Every response has to write current mediaSequence onto httpHeaders*/
-func (ls *LiveState) MediaSequence() int {
-	ls.mu.RLock()
-	defer ls.mu.RUnlock()
-
-	return ls.mediaSequence
 }
 
 /*
