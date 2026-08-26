@@ -15,6 +15,7 @@ const (
 
 func NewSessionID() (string, error) {
 	buf := make([]byte, sessionIDBytes)
+	/*Create random 32Bytes*/
 	if _, err := rand.Read(buf); err != nil {
 		return "", err
 	}

@@ -53,7 +53,9 @@ func (ls *LiveState) Playlist() Playlist {
 		//We restart the stream when reaching the last segment
 		index := (ls.currentIndex + i) % total
 		segments[i] = WindowSegment{
-			Segment:       ls.pool.Segments[index],
+			Segment: ls.pool.Segments[index],
+			//By definition, we have to insert #EXT-X-DISCONTINUITY on the segment that HLS media has to restart
+			// the timeline since its Presentation Timestamp is lower than the segment before it
 			Discontinuity: index == 0 && ls.mediaSequence+i > 0,
 		}
 	}
