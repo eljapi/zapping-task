@@ -61,6 +61,11 @@ The 64 `.ts` files are gitignored (480 MB). They must already be in
   Removing the per-request deadline extension truncates it to 4,541,440 bytes
   **while still returning 200** — silent corruption, which is why the
   extension matters.
+- Assets under `/static/` load without a session (200, correct MIME types)
+  while `/`, `/playlist.m3u8` and `/segments/` stay guarded.
+- No file outside `web/` is reachable: `/go.mod`, `/schema.sql` and
+  `/internal/db/db.go` all 404 even with a valid session, and traversal
+  attempts from `/static/` resolve back inside the root.
 - Auth, verified end to end in a real browser: signing up lands on the player,
   the video plays (`readyState` 4, 1920x1080, ~50s buffered), signing out
   invalidates the session, and returning to `/` redirects to `/login`.
@@ -175,6 +180,11 @@ internal/auth/middleware.go  Auth type, RequirePage, RequireAPI, UserFrom
 internal/auth/handlers.go    signup, login, logout
 web/login.html               public
 web/signup.html              public
+web/static/theme.css         shared tokens and base, all three pages
+web/static/auth.css          form styling
+web/static/player.css        player styling
+web/static/auth.js           maps ?error= codes to messages
+web/static/player.js         HLS.js setup
 ```
 
 - **Two middlewares, not one.** `RequirePage` redirects to `/login`, which is
@@ -190,9 +200,14 @@ web/signup.html              public
 - **Errors travel as short codes** in the query string (`?error=taken`), and
   the page maps the code to a message. No user text in the URL, no template
   engine needed.
-- **The CSS is inlined in the auth pages.** A shared stylesheet would be served
-  from `/`, which is behind `RequirePage`, so the login page would redirect
-  before it could load its own styles.
+- **Static assets need their own public route.** Stylesheets and scripts live
+  in `web/static/` and are served from `GET /static/`, registered *before* the
+  `/` catch-all and deliberately outside the middleware. Serving them from `/`
+  would put them behind `RequirePage`, and the login page would be redirected
+  away before it could load its own styles. They hold no secrets, so exposing
+  them costs nothing.
+- **Error codes are unique across pages** so a single `auth.js` serves both
+  forms: `invalid` for login, and `fields` / `password` / `taken` for signup.
 - `COOKIE_SECURE` defaults to `true`. Browsers accept `Secure` cookies on
   `localhost`, so this works in development; set it to `false` only when
   serving over plain HTTP from a non-localhost host.

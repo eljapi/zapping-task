@@ -5,107 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="%230f1115"/><circle cx="16" cy="16" r="7" fill="%23ff4d4d"/></svg>'>
 <title>Player</title>
-<style>
-  :root {
-    --bg: #0f1115;
-    --panel: #171a21;
-    --border: #262b36;
-    --text: #e6e8ec;
-    --muted: #8b93a3;
-    --live: #ff4d4d;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    min-height: 100vh;
-    background: var(--bg);
-    color: var(--text);
-    font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-  }
-  main { width: 100%; max-width: 900px; }
-  header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 14px;
-  }
-  h1 { font-size: 17px; font-weight: 600; margin: 0; letter-spacing: .2px; }
-  .live {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: .08em;
-    color: var(--live);
-    text-transform: uppercase;
-  }
-  .dot {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: var(--live);
-    animation: pulse 1.6s ease-in-out infinite;
-  }
-  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
-  form.logout { margin-left: auto; }
-  form.logout button {
-    background: var(--panel);
-    color: var(--muted);
-    border: 1px solid var(--border);
-    border-radius: 7px;
-    padding: 6px 12px;
-    font: inherit;
-    font-size: 13px;
-    cursor: pointer;
-  }
-  form.logout button:hover { color: var(--text); border-color: var(--muted); }
-  video {
-    width: 100%;
-    aspect-ratio: 16 / 9;
-    background: #000;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    display: block;
-  }
-  .stats {
-    margin-top: 14px;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 10px;
-  }
-  .stat {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 12px;
-  }
-  .stat dt {
-    font-size: 11px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: .06em;
-    margin: 0 0 3px;
-  }
-  .stat dd {
-    margin: 0;
-    font-size: 19px;
-    font-variant-numeric: tabular-nums;
-  }
-  #error {
-    margin-top: 14px;
-    padding: 10px 12px;
-    border-radius: 8px;
-    border: 1px solid #5c2626;
-    background: #2a1414;
-    color: #ffb4b4;
-    font-size: 13px;
-    display: none;
-  }
-</style>
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/player.css">
 </head>
 <body>
 <main>
@@ -126,46 +27,7 @@
 
   <p id="error"></p>
 </main>
-
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
-<script>
-  const PLAYLIST = "/playlist.m3u8";
-  const video = document.getElementById("video");
-  const errorBox = document.getElementById("error");
-  let reloads = 0;
-
-  function set(id, value) {
-    document.getElementById(id).textContent = value;
-  }
-
-  function fail(message) {
-    errorBox.textContent = message;
-    errorBox.style.display = "block";
-  }
-
-  if (Hls.isSupported()) {
-    const hls = new Hls({ lowLatencyMode: false });
-    hls.loadSource(PLAYLIST);
-    hls.attachMedia(video);
-
-    hls.on(Hls.Events.LEVEL_UPDATED, (_, data) => {
-      const details = data.details;
-      set("seq", details.startSN);
-      set("count", details.fragments.length);
-      set("target", details.targetduration + "s");
-      set("reloads", ++reloads);
-    });
-
-    hls.on(Hls.Events.ERROR, (_, data) => {
-      if (data.fatal) {
-        fail(data.type + ": " + data.details);
-      }
-    });
-  } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-    video.src = PLAYLIST;
-  } else {
-    fail("HLS is not supported in this browser.");
-  }
-</script>
+<script src="/static/player.js"></script>
 </body>
 </html>

@@ -15,7 +15,7 @@ func (a *Auth) SignupHandler(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 
 	if name == "" || !strings.Contains(email, "@") {
-		http.Redirect(w, r, "/signup?error=invalid", http.StatusSeeOther)
+		http.Redirect(w, r, "/signup?error=fields", http.StatusSeeOther)
 		return
 	}
 

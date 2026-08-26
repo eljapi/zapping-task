@@ -17,6 +17,9 @@ This registers our handlers onto the given ServeMux
 */
 
 func RegisterRoutes(mux *http.ServeMux, s *Stream, a *auth.Auth, webDir string) {
+	static := http.FileServer(http.Dir(filepath.Join(webDir, "static")))
+	mux.Handle("GET /static/", http.StripPrefix("/static/", static))
+
 	mux.HandleFunc("GET /login", servePage(webDir, "login.html"))
 	mux.HandleFunc("GET /signup", servePage(webDir, "signup.html"))
 

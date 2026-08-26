@@ -59,6 +59,7 @@ curl -I localhost:8080/segments/segment0.ts
 
 | Method | Path | Description |
 |---|---|---|
+| GET | `/static/…` | Stylesheets and scripts |
 | GET | `/signup`, `/login` | Public pages |
 | POST | `/signup`, `/login`, `/logout` | Auth actions |
 | GET | `/playlist.m3u8` | Live media playlist — 3-segment rolling window *(auth)* |
@@ -90,6 +91,7 @@ schema.sql                users and sessions tables
 web/index.html            HLS.js player
 web/login.html            sign-in page
 web/signup.html           registration page
+web/static/               stylesheets and scripts, served publicly
 ```
 
 ## Design notes
