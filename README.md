@@ -17,8 +17,8 @@ encoder would.
 | Segment serving (streamed from disk, range requests, path-traversal guard) | done |
 | Player page (HLS.js) | done |
 | Postgres schema and data access layer | done |
-| Password hashing, session cookie, auth middleware | in progress |
-| Signup / login pages | not started |
+| Password hashing, session cookie, auth middleware | done |
+| Signup / login pages | done |
 | Dockerfile | not started |
 
 ## Requirements
@@ -46,6 +46,7 @@ for development:
 |---|---|
 | `SEGMENTS_DIR` | `hls test/hls test` |
 | `DATABASE_URL` | `postgres://zapping:zapping@localhost:5432/zapping` |
+| `COOKIE_SECURE` | `true` — set to `false` only to serve over plain HTTP from a non-localhost host |
 
 Open <http://localhost:8080> for the player, or query the API directly:
 
@@ -58,9 +59,11 @@ curl -I localhost:8080/segments/segment0.ts
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/playlist.m3u8` | Live media playlist — 3-segment rolling window |
-| GET | `/segments/{name}.ts` | One MPEG-TS segment, streamed from disk |
-| GET | `/` | Static files from `web/` |
+| GET | `/signup`, `/login` | Public pages |
+| POST | `/signup`, `/login`, `/logout` | Auth actions |
+| GET | `/playlist.m3u8` | Live media playlist — 3-segment rolling window *(auth)* |
+| GET | `/segments/{name}.ts` | One MPEG-TS segment, streamed from disk *(auth)* |
+| GET | `/` | Player page *(auth)* |
 
 ## Layout
 
@@ -74,12 +77,19 @@ internal/stream/
 internal/api/
   handlers.go             Stream type, playlist and segment handlers
   router.go               route constants and route registration
+internal/auth/
+  password.go             bcrypt hashing
+  session.go              session id generation, cookie handling
+  middleware.go           Auth type, RequirePage, RequireAPI
+  handlers.go             signup, login, logout
 internal/db/
   db.go                   Store type, connection, sentinel errors
   users.go                User type, CreateUser, UserByEmail
   sessions.go             CreateSession, SessionUser, DeleteSession
 schema.sql                users and sessions tables
 web/index.html            HLS.js player
+web/login.html            sign-in page
+web/signup.html           registration page
 ```
 
 ## Design notes
@@ -141,3 +151,17 @@ parsed as SQL, which is what actually prevents injection. Postgres errors are
 translated into domain errors inside the data layer, so handlers never see a
 driver type. Session expiry is enforced in SQL rather than in Go, so an
 expired session simply returns no row and cannot be forgotten.
+
+**Every protected route, not just the page.** The specification asks that only
+registered users reach the player. Guarding `/` alone would be theatre, since
+anyone knowing the URLs could still pull `/playlist.m3u8` and `/segments/`
+directly and take the whole stream without an account. All three sit behind the
+middleware, which comes in two flavours: page requests are redirected to
+`/login`, while the playlist and segment routes answer `401`, because
+redirecting an HLS client to an HTML page would only confuse it.
+
+**Timing-equalised login.** An unknown email would otherwise return
+immediately while a wrong password spends ~40ms in bcrypt, and that gap reveals
+which addresses are registered. The unknown-email path deliberately runs a
+throwaway comparison so both take the same time, and both return the same
+message.

@@ -38,10 +38,10 @@ The 64 `.ts` files are gitignored (480 MB). They must already be in
 | Player page | done |
 | Postgres + schema + docker compose | done |
 | DB layer (users, sessions) | done, verified against a real Postgres |
-| Password hashing | **next** |
-| Session cookie + auth middleware | **next** |
-| Signup / login pages | not started |
-| Dockerfile for the app itself | not started |
+| Password hashing (bcrypt) | done |
+| Session cookie + auth middleware | done |
+| Signup / login pages | done |
+| Dockerfile for the app itself | **next** |
 
 ## Verified working
 
@@ -61,6 +61,22 @@ The 64 `.ts` files are gitignored (480 MB). They must already be in
   Removing the per-request deadline extension truncates it to 4,541,440 bytes
   **while still returning 200** — silent corruption, which is why the
   extension matters.
+- Auth, verified end to end in a real browser: signing up lands on the player,
+  the video plays (`readyState` 4, 1920x1080, ~50s buffered), signing out
+  invalidates the session, and returning to `/` redirects to `/login`.
+- **`document.cookie` returns empty on the player page while the video keeps
+  playing** — proof that `HttpOnly` works: the browser sends the cookie, but
+  JavaScript cannot read it.
+- Unauthenticated access: `/` redirects (303), `/playlist.m3u8` and
+  `/segments/` return 401. All three are guarded, not just the page.
+- Signup rejects duplicate emails, short passwords and malformed emails, each
+  with its own message.
+- Login is case-insensitive on email and gives the *same* error for an unknown
+  email and a wrong password. Timings measured identical (0.04s both), because
+  the unknown-email path still runs a dummy bcrypt compare.
+- Cookie is issued as `HttpOnly; Secure; SameSite=Strict; Path=/`, and logout
+  clears it with `Max-Age=0`.
+- Deleting a user cascades to their sessions.
 - DB layer round trip: user created, duplicate email rejected with
   `ErrEmailTaken`, case-insensitive lookup, missing user gives `ErrNotFound`,
   valid session resolves to its user, **expired session rejected**, deleted
@@ -150,32 +166,52 @@ schema.sql               users + sessions tables
 - Postgres errors are translated into domain errors at this layer, so handlers
   never see `pgx.ErrNoRows` or the `23505` unique-violation code.
 
+## Auth layer notes
+
+```
+internal/auth/password.go    bcrypt hashing, dummy hash for timing
+internal/auth/session.go     session id generation, cookie set/clear
+internal/auth/middleware.go  Auth type, RequirePage, RequireAPI, UserFrom
+internal/auth/handlers.go    signup, login, logout
+web/login.html               public
+web/signup.html              public
+```
+
+- **Two middlewares, not one.** `RequirePage` redirects to `/login`, which is
+  right for a browser. `RequireAPI` returns 401, which is right for the
+  playlist and segments — a redirect there would hand HLS.js an HTML page
+  where it expects a playlist.
+- **The dummy bcrypt compare.** A missing email would otherwise return
+  immediately while a wrong password takes ~40ms of hashing, and that
+  difference tells an attacker which emails are registered. The unknown-email
+  path burns the same time on purpose.
+- **Login errors are deliberately vague.** Unknown email and wrong password
+  produce the identical message.
+- **Errors travel as short codes** in the query string (`?error=taken`), and
+  the page maps the code to a message. No user text in the URL, no template
+  engine needed.
+- **The CSS is inlined in the auth pages.** A shared stylesheet would be served
+  from `/`, which is behind `RequirePage`, so the login page would redirect
+  before it could load its own styles.
+- `COOKIE_SECURE` defaults to `true`. Browsers accept `Secure` cookies on
+  `localhost`, so this works in development; set it to `false` only when
+  serving over plain HTTP from a non-localhost host.
+
 ## Next steps
 
-1. **`internal/auth`**
-   - Hash passwords with `golang.org/x/crypto/bcrypt` (`GenerateFromPassword`,
-     `CompareHashAndPassword`). Never SHA-256, never hand-rolled.
-     `go mod tidy` dropped bcrypt from `go.mod` because nothing imports it yet;
-     it comes back on first use.
-   - `NewSessionID()` — 32 bytes from `crypto/rand`, hex or base64url encoded.
-   - `Middleware` — `func(http.Handler) http.Handler`: read the cookie, call
-     `SessionUser`, on failure redirect to `/login`, on success put the user in
-     the request context and call the next handler.
-2. **Auth handlers**: `POST /signup`, `POST /login`, `POST /logout`.
-   Validate input, hash, create the session row, `http.SetCookie`.
-   On logout: delete the row **and** expire the cookie.
-   Login failure must not reveal whether the email exists — same message for
-   unknown email and wrong password.
-3. **Pages**: `web/signup.html`, `web/login.html`. Plain forms posting to the
-   handlers above.
-4. **Wire the middleware** around the player, the playlist and the segments.
-5. **Dockerfile**. Multi-stage: build the binary, copy it into a small image.
-   Open question: the `.ts` files are gitignored, so they must be mounted as a
-   volume or copied in from outside the repo. Add the app to
-   `docker-compose.yml` alongside the db.
+1. **Dockerfile** — the last thing the spec asks for. Multi-stage: build the
+   binary, copy it into a small image. The `.ts` files are gitignored, so they
+   have to be mounted as a volume rather than copied in. Add the app service to
+   `docker-compose.yml` next to the db, with `depends_on` waiting on the db
+   healthcheck.
+2. **Show who is logged in.** The middleware already puts the user in the
+   request context and `auth.UserFrom(ctx)` reads it back, but nothing displays
+   it yet. Serving the player through `html/template` would let the page greet
+   the user by name.
 
 Deferred on purpose: N livestreams via `map[string]*LiveState`; a parser
-factory keyed by HLS version; a cleanup job deleting expired session rows.
+factory keyed by HLS version; a cleanup job deleting expired session rows
+(harmless for now, since expiry is enforced in the query).
 
 ## Go concepts covered so far
 
@@ -189,7 +225,10 @@ pointers vs values; multiple and named return values; `defer`; `bufio.Scanner`;
 (`s.StreamHandler`); closures vs methods for handler dependencies;
 shadowing; `time.Ticker` and channels; `context.Context` as the first
 parameter of anything doing I/O; error wrapping with `%w`; sentinel errors
-with `errors.Is`; type-matching wrapped errors with `errors.As`.
+with `errors.Is`; type-matching wrapped errors with `errors.As`; middleware as
+`func(http.Handler) http.Handler`; unexported struct types as context keys;
+`http.HandlerFunc` as an adapter; closures returning handlers (`servePage`);
+Go 1.22 method-aware mux patterns (`"POST /login"`).
 
 ## Notes on the spec
 

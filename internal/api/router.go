@@ -1,6 +1,11 @@
 package api
 
-import "net/http"
+import (
+	"net/http"
+	"path/filepath"
+
+	"zapping-task/internal/auth"
+)
 
 const (
 	PlaylistPath   = "/playlist.m3u8"
@@ -11,8 +16,21 @@ const (
 This registers our handlers onto the given ServeMux
 */
 
-func RegisterRoutes(mux *http.ServeMux, s *Stream, webDir string) {
-	mux.HandleFunc(PlaylistPath, s.StreamHandler)
-	mux.HandleFunc(SegmentsPrefix, s.SegmentHandler)
-	mux.Handle("/", http.FileServer(http.Dir(webDir)))
+func RegisterRoutes(mux *http.ServeMux, s *Stream, a *auth.Auth, webDir string) {
+	mux.HandleFunc("GET /login", servePage(webDir, "login.html"))
+	mux.HandleFunc("GET /signup", servePage(webDir, "signup.html"))
+
+	mux.HandleFunc("POST /login", a.LoginHandler)
+	mux.HandleFunc("POST /signup", a.SignupHandler)
+	mux.HandleFunc("POST /logout", a.LogoutHandler)
+
+	mux.Handle(PlaylistPath, a.RequireAPI(http.HandlerFunc(s.StreamHandler)))
+	mux.Handle(SegmentsPrefix, a.RequireAPI(http.HandlerFunc(s.SegmentHandler)))
+	mux.Handle("/", a.RequirePage(http.FileServer(http.Dir(webDir))))
+}
+
+func servePage(dir, name string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, filepath.Join(dir, name))
+	}
 }

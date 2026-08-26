@@ -66,6 +66,7 @@ func (s *Stream) SegmentHandler(w http.ResponseWriter, r *http.Request) {
 	/* Setting MimeType */
 	w.Header().Set("Content-Type", "video/mp2t")
 
+	/*Override global WriteTimeout because a 5mb segment on a slow client would be truncated, and still returning 200*/
 	if err := http.NewResponseController(w).SetWriteDeadline(time.Now().Add(segmentWriteTimeout)); err != nil {
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
 		return
@@ -77,7 +78,7 @@ func (s *Stream) SegmentHandler(w http.ResponseWriter, r *http.Request) {
 		Every request uses 32KB of heap when sending the file. With ReadFile this costs the
 		complete size of the file.
 
-		Also we take advantage of the built-in Content-Range request handling returning 206 partial content
+		Also we take advantage of the built-in Range request handling, answering with 206 partial content
 
 	*/
 	http.ServeFile(w, r, filepath.Join(s.segmentsDir, name))
