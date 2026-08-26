@@ -16,13 +16,15 @@ encoder would.
 | HLS playlist generation + sliding window | done |
 | Segment serving (streamed from disk, range requests, path-traversal guard) | done |
 | Player page (HLS.js) | done |
+| Postgres schema and data access layer | done |
+| Password hashing, session cookie, auth middleware | in progress |
 | Signup / login pages | not started |
-| User database + auth guard on the player | not started |
 | Dockerfile | not started |
 
 ## Requirements
 
 - Go 1.25 or newer.
+- Docker, for the Postgres instance.
 - The 64 `.ts` segment files. **They are not in this repository** — 480 MB of
   media does not belong in git. Place them, together with `segment.m3u8`, in
   `hls test/hls test/` before running.
@@ -30,11 +32,20 @@ encoder would.
 ## Running
 
 ```bash
-go run ./cmd/server
+docker compose up -d     # Postgres on :5432, schema applied on first boot
+go run ./cmd/server      # listens on :8080
 ```
 
-Paths are resolved relative to the working directory, so run it from the
-repository root. The server listens on `:8080`.
+Paths are resolved relative to the working directory, so run the server from
+the repository root.
+
+Both settings fall back to working local defaults, so nothing needs to be set
+for development:
+
+| Variable | Default |
+|---|---|
+| `SEGMENTS_DIR` | `hls test/hls test` |
+| `DATABASE_URL` | `postgres://zapping:zapping@localhost:5432/zapping` |
 
 Open <http://localhost:8080> for the player, or query the API directly:
 
@@ -63,6 +74,11 @@ internal/stream/
 internal/api/
   handlers.go             Stream type, playlist and segment handlers
   router.go               route constants and route registration
+internal/db/
+  db.go                   Store type, connection, sentinel errors
+  users.go                User type, CreateUser, UserByEmail
+  sessions.go             CreateSession, SessionUser, DeleteSession
+schema.sql                users and sessions tables
 web/index.html            HLS.js player
 ```
 
@@ -109,3 +125,19 @@ directory.
 Only parsed metadata lives in RAM, and `http.ServeFile` streams each segment
 in fixed-size chunks, so a request costs kilobytes of heap rather than the
 size of the file.
+
+**Sessions over JWTs.** Authentication uses an opaque random session
+identifier stored in an `HttpOnly; Secure; SameSite=Strict` cookie, with the
+session row held in Postgres. A JWT exists to avoid a database round trip in a
+distributed system; this is a single binary with a database the specification
+already requires, so a JWT would add signing, verification and rotation
+without buying anything — and it is awkward to revoke, since there is no row
+to delete. Session identifiers come from `crypto/rand`, well above the 64 bits
+of entropy OWASP requires.
+
+**Parameterised queries, no ORM.** All SQL is hand-written with `$1`-style
+placeholders. The value travels separately from the statement and is never
+parsed as SQL, which is what actually prevents injection. Postgres errors are
+translated into domain errors inside the data layer, so handlers never see a
+driver type. Session expiry is enforced in SQL rather than in Go, so an
+expired session simply returns no row and cannot be forgotten.
