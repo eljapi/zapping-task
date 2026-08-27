@@ -10,6 +10,7 @@ import (
 
 	"zapping-task/internal/api"
 	"zapping-task/internal/auth"
+	"zapping-task/internal/chat"
 	"zapping-task/internal/db"
 	"zapping-task/internal/stream"
 )
@@ -57,9 +58,12 @@ func main() {
 	/*Initialize Stream handlers*/
 	liveStream := api.NewStream(pool, liveState, segmentsDir)
 
+	chatState := chat.NewChatState(50)
+	liveChat := api.NewChat(chatState)
+
 	/*Custom Mux to register custom routes, DefaultServeMux is global and any package can register routes*/
 	mux := http.NewServeMux()
-	api.RegisterRoutes(mux, liveStream, authenticator, webDir)
+	api.RegisterRoutes(mux, liveStream, liveChat, authenticator, webDir)
 
 	/*ReadHeaderTimeout is what stops a slowloris attack. WriteTimeout is a
 	hard deadline on the whole response, so SegmentHandler extends its own*/

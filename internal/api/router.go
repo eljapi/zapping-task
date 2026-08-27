@@ -16,7 +16,7 @@ const (
 This registers our handlers onto the given ServeMux
 */
 
-func RegisterRoutes(mux *http.ServeMux, s *Stream, a *auth.Auth, webDir string) {
+func RegisterRoutes(mux *http.ServeMux, s *Stream, c *Chat, a *auth.Auth, webDir string) {
 	static := http.FileServer(http.Dir(filepath.Join(webDir, "static")))
 	mux.Handle("GET /static/", http.StripPrefix("/static/", static))
 
@@ -29,6 +29,8 @@ func RegisterRoutes(mux *http.ServeMux, s *Stream, a *auth.Auth, webDir string) 
 
 	mux.Handle(PlaylistPath, a.RequireAPI(http.HandlerFunc(s.StreamHandler)))
 	mux.Handle(SegmentsPrefix, a.RequireAPI(http.HandlerFunc(s.SegmentHandler)))
+	mux.Handle("GET /chat/messages", a.RequireAPI(http.HandlerFunc(c.MessagesHandler)))
+	mux.Handle("POST /chat", a.RequireAPI(http.HandlerFunc(c.SendHandler)))
 	mux.Handle("/", a.RequirePage(http.FileServer(http.Dir(webDir))))
 }
 

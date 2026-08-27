@@ -7,6 +7,7 @@
 <title>Player</title>
 <link rel="stylesheet" href="/static/theme.css">
 <link rel="stylesheet" href="/static/player.css">
+<link rel="stylesheet" href="/static/chat.css">
 </head>
 <body>
 <main>
@@ -26,8 +27,18 @@
   </dl>
 
   <p id="error"></p>
+
+  <section class="chat">
+    <h2>Chat</h2>
+    <ul id="chat-messages"></ul>
+    <form id="chat-form">
+      <input id="chat-input" type="text" placeholder="Say something" maxlength="200" autocomplete="off">
+      <button type="submit">Send</button>
+    </form>
+  </section>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
 <script src="/static/player.js"></script>
+<script src="/static/chat.js"></script>
 </body>
 </html>
