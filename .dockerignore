@@ -1,0 +1,10 @@
+.git
+.gitignore
+hls test/
+__MACOSX/
+*.pdf
+.playwright-mcp/
+.vscode/
+.env
+README.md
+PROGRESS.md

@@ -7,6 +7,7 @@ import (
 
 	"zapping-task/internal/auth"
 	"zapping-task/internal/chat"
+	"zapping-task/internal/weberr"
 )
 
 type Chat struct {
@@ -25,13 +26,13 @@ func (c *Chat) MessagesHandler(w http.ResponseWriter, r *http.Request) {
 func (c *Chat) SendHandler(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.UserFrom(r.Context())
 	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		weberr.Unauthorized(w)
 		return
 	}
 
 	text := strings.TrimSpace(r.FormValue("text"))
 	if text == "" {
-		http.Error(w, "empty message", http.StatusBadRequest)
+		weberr.BadRequest(w, "empty message")
 		return
 	}
 

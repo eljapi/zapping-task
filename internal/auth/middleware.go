@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"zapping-task/internal/db"
+	"zapping-task/internal/weberr"
 )
 
 type contextKey struct{}
@@ -33,7 +34,7 @@ func (a *Auth) RequirePage(next http.Handler) http.Handler {
 
 func (a *Auth) RequireAPI(next http.Handler) http.Handler {
 	return a.require(next, func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		weberr.Unauthorized(w)
 	})
 }
 

@@ -5,6 +5,12 @@ hls test/**/*.ts
 /server
 /zapping-task
 
+# Local environment overrides
+.env
+
+# Personal working notes, kept local
+/PROGRESS.md
+
 # Editor
 .vscode/
 

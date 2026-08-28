@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"zapping-task/internal/stream"
+	"zapping-task/internal/weberr"
 )
 
 const segmentWriteTimeout = 2 * time.Minute
@@ -65,7 +66,7 @@ func (s *Stream) SegmentHandler(w http.ResponseWriter, r *http.Request) {
 
 	/*Security check for malicious path traversal like ../../etc/passwd*/
 	if _, ok := s.validSegments[name]; !ok {
-		http.NotFound(w, r)
+		weberr.NotFound(w)
 		return
 	}
 
@@ -74,7 +75,7 @@ func (s *Stream) SegmentHandler(w http.ResponseWriter, r *http.Request) {
 
 	/*Override global WriteTimeout because a 5mb segment on a slow client would be truncated, and still returning 200*/
 	if err := http.NewResponseController(w).SetWriteDeadline(time.Now().Add(segmentWriteTimeout)); err != nil {
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		weberr.Internal(w)
 		return
 	}
 

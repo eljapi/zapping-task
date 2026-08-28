@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"zapping-task/internal/db"
+	"zapping-task/internal/weberr"
 )
 
 func (a *Auth) SignupHandler(w http.ResponseWriter, r *http.Request) {
@@ -15,28 +16,28 @@ func (a *Auth) SignupHandler(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 
 	if name == "" || !strings.Contains(email, "@") {
-		http.Redirect(w, r, "/signup?error=fields", http.StatusSeeOther)
+		weberr.Redirect(w, r, "/signup", weberr.CodeFields)
 		return
 	}
 
 	if len(password) < MinPasswordLength || len(password) > MaxPasswordLength {
-		http.Redirect(w, r, "/signup?error=password", http.StatusSeeOther)
+		weberr.Redirect(w, r, "/signup", weberr.CodePassword)
 		return
 	}
 
 	hash, err := HashPassword(password)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		weberr.Internal(w)
 		return
 	}
 
 	user, err := a.store.CreateUser(r.Context(), name, email, hash)
 	if err != nil {
 		if errors.Is(err, db.ErrEmailTaken) {
-			http.Redirect(w, r, "/signup?error=taken", http.StatusSeeOther)
+			weberr.Redirect(w, r, "/signup", weberr.CodeTaken)
 			return
 		}
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		weberr.Internal(w)
 		return
 	}
 
@@ -50,12 +51,12 @@ func (a *Auth) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := a.store.UserByEmail(r.Context(), email)
 	if err != nil {
 		burnTime(password)
-		http.Redirect(w, r, "/login?error=invalid", http.StatusSeeOther)
+		weberr.Redirect(w, r, "/login", weberr.CodeInvalid)
 		return
 	}
 
 	if err := CheckPassword(user.PasswordHash, password); err != nil {
-		http.Redirect(w, r, "/login?error=invalid", http.StatusSeeOther)
+		weberr.Redirect(w, r, "/login", weberr.CodeInvalid)
 		return
 	}
 
@@ -74,13 +75,13 @@ func (a *Auth) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 func (a *Auth) startSession(w http.ResponseWriter, r *http.Request, userID int64) {
 	id, err := NewSessionID()
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		weberr.Internal(w)
 		return
 	}
 
 	expires := time.Now().Add(SessionLifetime)
 	if err := a.store.CreateSession(r.Context(), id, userID, expires); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		weberr.Internal(w)
 		return
 	}
 

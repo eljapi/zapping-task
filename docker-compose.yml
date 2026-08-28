@@ -2,19 +2,36 @@ services:
   db:
     image: postgres:17-alpine
     environment:
-      POSTGRES_USER: zapping
-      POSTGRES_PASSWORD: zapping
-      POSTGRES_DB: zapping
+      POSTGRES_USER: ${POSTGRES_USER:-zapping}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zapping}
+      POSTGRES_DB: ${POSTGRES_DB:-zapping}
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
-      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U zapping"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-zapping} -d ${POSTGRES_DB:-zapping}"]
       interval: 5s
       timeout: 3s
       retries: 10
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      LISTEN_ADDR: ":8080"
+      DATABASE_URL: "postgres://${POSTGRES_USER:-zapping}:${POSTGRES_PASSWORD:-zapping}@db:5432/${POSTGRES_DB:-zapping}"
+      SEGMENTS_DIR: /segments
+      WEB_DIR: /app/web
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+      TICK_INTERVAL: "${TICK_INTERVAL:-10s}"
+      CHAT_HISTORY_SIZE: "${CHAT_HISTORY_SIZE:-50}"
+    volumes:
+      - "${SEGMENTS_DIR:-./hls test/hls test}:/segments:ro"
 
 volumes:
   pgdata:

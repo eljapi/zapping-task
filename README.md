@@ -1,4 +1,4 @@
-# Zapping — HLS Live Stream Simulator
+# Infinite Stream — HLS Live Stream Simulator
 
 A Go microservice that simulates an HLS live stream from a fixed set of
 pre-encoded segments, plus a browser player built on HLS.js.
@@ -16,37 +16,84 @@ encoder would.
 | HLS playlist generation + sliding window | done |
 | Segment serving (streamed from disk, range requests, path-traversal guard) | done |
 | Player page (HLS.js) | done |
-| Postgres schema and data access layer | done |
+| Postgres data access layer + goose migrations | done |
 | Password hashing, session cookie, auth middleware | done |
 | Signup / login pages | done |
-| Dockerfile | not started |
+| Config from environment (`internal/config`) | done |
+| Dockerfile + docker compose (app + db) | done |
 
 ## Requirements
 
-- Go 1.25 or newer.
-- Docker, for the Postgres instance.
+- Go 1.25 or newer (only for running the app outside Docker).
+- Docker with Compose — runs Postgres alone, or the whole stack.
 - The 64 `.ts` segment files. **They are not in this repository** — 480 MB of
   media does not belong in git. Place them, together with `segment.m3u8`, in
   `hls test/hls test/` before running.
 
 ## Running
 
+### Full stack in Docker
+
 ```bash
-docker compose up -d     # Postgres on :5432, schema applied on first boot
-go run ./cmd/server      # listens on :8080
+cp .env.example .env                 # optional, only to override defaults
+SEGMENTS_DIR="$PWD/hls test/hls test" docker compose up --build
+```
+
+`docker compose up` builds the app image and starts two services: `db`
+(plain Postgres 17) and `app` (the Go binary, frontend included). The app runs
+its embedded goose migrations against the database on startup, so the schema is
+created on first boot and left alone afterwards. The `.ts` files are not in the
+image — they are bind-mounted read-only from `SEGMENTS_DIR` on the host into
+`/segments`. Open <http://localhost:8080>.
+
+### App on the host, Postgres in Docker
+
+```bash
+docker compose up -d db     # Postgres on :5432
+go run ./cmd/server         # listens on :8080
 ```
 
 Paths are resolved relative to the working directory, so run the server from
-the repository root.
+the repository root. The server applies migrations itself, so a bare `db`
+container with an empty volume is enough.
 
-Both settings fall back to working local defaults, so nothing needs to be set
-for development:
+### Migrations
 
-| Variable | Default |
-|---|---|
-| `SEGMENTS_DIR` | `hls test/hls test` |
-| `DATABASE_URL` | `postgres://zapping:zapping@localhost:5432/zapping` |
-| `COOKIE_SECURE` | `true` — set to `false` only to serve over plain HTTP from a non-localhost host |
+Schema changes live in `internal/db/migrations/` as numbered goose files and are
+embedded into the binary (`//go:embed`). `db.Migrate` runs the pending ones at
+startup, tracking applied versions in a `goose_db_version` table, so a restart
+is a no-op. A new migration is just a numbered file with `-- +goose Up` and
+`-- +goose Down` sections; the goose CLI scaffolds one without being a project
+dependency:
+
+```bash
+go run github.com/pressly/goose/v3/cmd/goose@latest \
+  -dir internal/db/migrations create add_something sql
+```
+
+### Configuration
+
+Every setting falls back to a working local default, so nothing needs to be set
+for development. `internal/config` reads them once at startup, parses and
+validates, and fails fast on a bad value.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `LISTEN_ADDR` | `:8080` | Address the HTTP server binds to |
+| `DATABASE_URL` | `postgres://zapping:zapping@localhost:5432/zapping` | |
+| `SEGMENTS_DIR` | `hls test/hls test` | Directory holding the `.ts` files and `segment.m3u8` |
+| `WEB_DIR` | `web` | Directory served for pages and `/static/` |
+| `COOKIE_SECURE` | `true` | `false` to send the session cookie over plain HTTP from a non-localhost host |
+| `TICK_INTERVAL` | `10s` | How often the live window advances one segment (Go duration syntax) |
+| `CHAT_HISTORY_SIZE` | `50` | Chat messages kept in memory |
+
+Fixed values that are protocol or security invariants stay as named constants
+in code, not environment variables: the 3-segment window and HLS version
+(`internal/stream`), session-id entropy and password bounds (`internal/auth`),
+and the HTTP server timeouts and DB connect timeout (`cmd/server`).
+
+The compose file also reads `POSTGRES_USER`, `POSTGRES_PASSWORD`,
+`POSTGRES_DB`, `DB_PORT` and `APP_PORT` from `.env` — see `.env.example`.
 
 Open <http://localhost:8080> for the player, or query the API directly:
 
@@ -69,15 +116,20 @@ curl -I localhost:8080/segments/segment0.ts
 ## Layout
 
 ```
-cmd/server/main.go        entrypoint: load pool, start ticker, wire routes
+cmd/server/main.go        entrypoint: load config, load pool, start ticker, wire routes
+internal/config/
+  config.go               Config struct, Load() reads and validates the environment
 internal/stream/
   pool.go                 Segment and Pool types (parsed once, then immutable)
   parser.go               m3u8 parsing and validation
   live.go                 LiveState: sliding window, ticker, RWMutex
   config.go               supported HLS version
 internal/api/
-  handlers.go             Stream type, playlist and segment handlers
+  stream.go               Stream type, playlist and segment handlers
+  chat.go                 in-memory chat handlers
   router.go               route constants and route registration
+internal/weberr/
+  weberr.go               every HTTP error response and ?error= code, in one place
 internal/auth/
   password.go             bcrypt hashing
   session.go              session id generation, cookie handling
@@ -87,7 +139,8 @@ internal/db/
   db.go                   Store type, connection, sentinel errors
   users.go                User type, CreateUser, UserByEmail
   sessions.go             CreateSession, SessionUser, DeleteSession
-schema.sql                users and sessions tables
+  migrate.go              embedded goose migrations, run at startup
+  migrations/*.sql        numbered up/down schema migrations
 web/index.html            HLS.js player
 web/login.html            sign-in page
 web/signup.html           registration page
@@ -154,6 +207,17 @@ translated into domain errors inside the data layer, so handlers never see a
 driver type. Session expiry is enforced in SQL rather than in Go, so an
 expired session simply returns no row and cannot be forgotten.
 
+**Migrations, not an init script.** The schema is a set of numbered goose
+migrations under `internal/db/migrations/`, embedded into the binary with
+`//go:embed` and applied by `db.Migrate` on startup. goose records applied
+versions in `goose_db_version`, so booting against an existing database only
+runs what is new. This replaces the earlier `schema.sql` mounted into the
+container's `docker-entrypoint-initdb.d`, which fired exactly once per data
+volume and could never express a change to an existing table. Only the
+`postgres` dialect is imported; goose's other drivers are test-only and never
+reach the binary. A separate `database/sql` handle is opened just for the
+migration and closed straight after — the app itself keeps using `pgxpool`.
+
 **Every protected route, not just the page.** The specification asks that only
 registered users reach the player. Guarding `/` alone would be theatre, since
 anyone knowing the URLs could still pull `/playlist.m3u8` and `/segments/`
@@ -182,3 +246,14 @@ reloads.
 discontinuity sequence and the segment window together under a single read
 lock. Reading them through separate calls would let a tick land in between and
 produce a playlist whose header disagreed with its own segment list.
+
+**One place for HTTP errors.** `internal/weberr` holds every error response the
+handlers can send: `Unauthorized`, `BadRequest`, `NotFound`, `Internal`, and
+`Redirect` for the form pages. Handlers never call `http.Error` directly, so a
+401 body reads the same whether it comes from the auth middleware or the chat
+endpoint. The `?error=` codes the signup and login pages use — `invalid`,
+`fields`, `password`, `taken` — are `weberr.Code` constants there too, the
+single source of truth; `web/static/auth.js` only maps those same code strings
+to the English sentence shown to the user. Domain sentinels
+(`db.ErrNotFound`, `auth.ErrInvalidCredentials`) stay in the package that
+raises them, which is the idiomatic Go split.

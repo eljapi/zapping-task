@@ -1,3 +1,4 @@
+-- +goose Up
 CREATE TABLE IF NOT EXISTS users (
     id            BIGSERIAL PRIMARY KEY,
     name          TEXT NOT NULL,
@@ -13,3 +14,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 
 CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions (expires_at);
+
+-- +goose Down
+DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS users;
