@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"time"
 )
 
 /*
@@ -22,7 +21,6 @@ const (
 	envSegmentsDir     = "SEGMENTS_DIR"
 	envWebDir          = "WEB_DIR"
 	envCookieSecure    = "COOKIE_SECURE"
-	envTickInterval    = "TICK_INTERVAL"
 	envChatHistorySize = "CHAT_HISTORY_SIZE"
 )
 
@@ -31,7 +29,6 @@ const (
 	defaultDatabaseURL     = "postgres://zapping:zapping@localhost:5432/zapping"
 	defaultWebDir          = "web"
 	defaultCookieSecure    = true
-	defaultTickInterval    = 10 * time.Second
 	defaultChatHistorySize = 50
 )
 
@@ -41,7 +38,6 @@ type Config struct {
 	SegmentsDir     string
 	WebDir          string
 	SecureCookies   bool
-	TickInterval    time.Duration
 	ChatHistorySize int
 }
 
@@ -73,15 +69,6 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	cfg.SecureCookies = secure
-
-	tick, err := getenvDuration(envTickInterval, defaultTickInterval)
-	if err != nil {
-		return nil, err
-	}
-	if tick <= 0 {
-		return nil, fmt.Errorf("%s must be positive, got %s", envTickInterval, tick)
-	}
-	cfg.TickInterval = tick
 
 	size, err := getenvInt(envChatHistorySize, defaultChatHistorySize)
 	if err != nil {
@@ -126,19 +113,6 @@ func getenvInt(key string, fallback int) (int, error) {
 	}
 
 	parsed, err := strconv.Atoi(value)
-	if err != nil {
-		return 0, fmt.Errorf("%s: %w", key, err)
-	}
-	return parsed, nil
-}
-
-func getenvDuration(key string, fallback time.Duration) (time.Duration, error) {
-	value := os.Getenv(key)
-	if value == "" {
-		return fallback, nil
-	}
-
-	parsed, err := time.ParseDuration(value)
 	if err != nil {
 		return 0, fmt.Errorf("%s: %w", key, err)
 	}

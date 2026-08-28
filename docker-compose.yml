@@ -28,7 +28,6 @@ services:
       SEGMENTS_DIR: /segments
       WEB_DIR: /app/web
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
-      TICK_INTERVAL: "${TICK_INTERVAL:-10s}"
       CHAT_HISTORY_SIZE: "${CHAT_HISTORY_SIZE:-50}"
     volumes:
       - "${SEGMENTS_DIR:?set it to the directory holding segment.m3u8 and its .ts files}:/segments:ro"

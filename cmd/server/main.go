@@ -58,7 +58,7 @@ func main() {
 	liveState := stream.NewLiveState(pool)
 	/*Advances the window one segment every TickInterval, on its own goroutine
 	so it never blocks the server*/
-	liveState.StartTicker(cfg.TickInterval)
+	liveState.StartTicker(stream.TickInterval)
 	fmt.Println("segments loaded:", len(pool.Segments), "- target duration:", pool.TargetDuration)
 	fmt.Println("connected to postgres")
 

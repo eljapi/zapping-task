@@ -103,13 +103,13 @@ fast on a bad value.
 | `SEGMENTS_DIR` | **required** | Directory holding `segment.m3u8` and the `.ts` files it names |
 | `WEB_DIR` | `web` | Directory served for pages and `/static/` |
 | `COOKIE_SECURE` | `true` | `false` to send the session cookie over plain HTTP from a non-localhost host |
-| `TICK_INTERVAL` | `10s` | How often the live window advances one segment (Go duration syntax) |
 | `CHAT_HISTORY_SIZE` | `50` | Chat messages kept in memory |
 
 Fixed values that are protocol or security invariants stay as named constants
-in code, not environment variables: the 3-segment window and HLS version
-(`internal/stream`), session-id entropy and password bounds (`internal/auth`),
-and the HTTP server timeouts and DB connect timeout (`cmd/server`).
+in code, not environment variables: the 3-segment window, the HLS version and
+the tick interval (`internal/stream`), session-id entropy and password bounds
+(`internal/auth`), and the HTTP server timeouts and DB connect timeout
+(`cmd/server`).
 
 The compose file also reads `POSTGRES_USER`, `POSTGRES_PASSWORD`,
 `POSTGRES_DB`, `DB_PORT` and `APP_PORT` from `.env` — see `.env.example`.
@@ -283,6 +283,26 @@ requires whenever the timestamp sequence changes, and the accompanying
 `EXT-X-DISCONTINUITY-SEQUENCE` counts only the seams that fall *before* the
 current playlist, so a segment keeps the same discontinuity number across
 reloads.
+
+**The tick is a constant, and should not even be that.** How often the window
+advances is not a deployment knob: a wrong value never fails, it breaks
+playback in silence. Measured in a browser against hls.js — too fast (1s) and
+the window turns over ten times between the playlist reloads a client makes
+every `TARGETDURATION`, so seven of every ten segments are never fetched and
+the buffer arrives as disjoint islands (`[0→30] [50→80] [150→180] …`) that
+playback stalls into and jumps out of; too slow (60s) and the client drains the
+window, reloads an unchanged playlist a dozen times and freezes at 29.9s.
+Neither raises an error in the server, in hls.js or on the page.
+
+What a real encoder does is publish a segment once that segment's worth of
+media has elapsed, so the cadence belongs to the segment, not to a single
+number covering all of them. Durations are not uniform: `segment63.ts` runs
+4.57s against the 10s of the other 63, and short first and last segments are
+routine in real encodes. The fixed tick therefore accumulates a lag — a full
+loop emits 634.6s of media over 640s of wall clock, 5.4s behind real time every
+time around. Deriving the interval from `segment.Duration` would remove both
+the drift and the possibility of misconfiguring it; the constant is what is
+here now, and this is the reason it is a constant rather than a setting.
 
 **One snapshot per playlist.** `Playlist()` returns the media sequence, the
 discontinuity sequence and the segment window together under a single read
