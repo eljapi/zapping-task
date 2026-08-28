@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -37,6 +38,11 @@ func LoadPool(path string) (*Pool, error) {
 		return nil, err
 	}
 
+	/*The playlist lives next to the media it names*/
+	if err := verifySegments(filepath.Dir(path), segments); err != nil {
+		return nil, err
+	}
+
 	pool := &Pool{
 		Segments: segments,
 		/*HLS RFC 8216 must be an integer*/
@@ -44,6 +50,27 @@ func LoadPool(path string) (*Pool, error) {
 	}
 
 	return pool, nil
+}
+
+/*
+segment.m3u8 is tracked in git but the 480MB of .ts files are not, so a fresh
+checkout parses 64 perfectly valid segments with no media behind them. Without
+this the server boots, answers the playlist with a 200 and 404s every segment,
+and the player spins forever with nothing to report. Better to refuse to start
+and say which file is missing
+*/
+func verifySegments(dir string, segments []Segment) error {
+	for _, segment := range segments {
+		/*
+			os.Stat only asks the filesystem for the entry's metadata, it never opens
+			the file, so checking all 64 at boot costs nothing
+		*/
+		if _, err := os.Stat(filepath.Join(dir, segment.Name)); err != nil {
+			return fmt.Errorf("%s is listed in the playlist but missing from %q: all %d .ts files have to sit next to segment.m3u8", segment.Name, dir, len(segments))
+		}
+	}
+
+	return nil
 }
 
 func parseHeader(scanner *bufio.Scanner) (firstSegmentLine string, err error) {

@@ -27,8 +27,11 @@ encoder would.
 - Go 1.25 or newer (only for running the app outside Docker).
 - Docker with Compose — runs Postgres alone, or the whole stack.
 - The 64 `.ts` segment files. **They are not in this repository** — 480 MB of
-  media does not belong in git. Place them, together with `segment.m3u8`, in
-  `hls test/hls test/` before running.
+  media does not belong in git. Drop them into `hls test/hls test/`, next to the
+  `segment.m3u8` that is tracked, and nothing else needs configuring. The
+  directory is only a default: any name, anywhere on the machine, works through
+  `SEGMENTS_DIR`, as long as the `.ts` files and the playlist that names them
+  sit together. The server refuses to start if any of them is missing.
 
 ## Running
 
@@ -201,6 +204,13 @@ at startup from the parsed pool. Anything not in it gets a 404. This is
 strictly stronger than normalising the path with `filepath.Base`, which would
 still happily serve any other file that happens to sit in the segments
 directory.
+
+**Fail at boot, not at the first segment.** `segment.m3u8` is tracked but the
+media it names is not, so a fresh checkout parses 64 valid segments with nothing
+behind them. Left alone, the server would boot, answer the playlist with a 200
+and 404 every segment, and the player would spin forever with nothing to report.
+`LoadPool` stats every file it just parsed and refuses to start, naming the first
+one missing and the directory it looked in.
 
 **Memory.** Segment bytes are never preloaded — 480 MB of media stays on disk.
 Only parsed metadata lives in RAM, and `http.ServeFile` streams each segment
