@@ -253,10 +253,23 @@ middleware, which comes in two flavours: page requests are redirected to
 redirecting an HLS client to an HTML page would only confuse it.
 
 **Timing-equalised login.** An unknown email would otherwise return
-immediately while a wrong password spends ~40ms in bcrypt, and that gap reveals
+immediately while a wrong password spends ~45ms in bcrypt, and that gap reveals
 which addresses are registered. The unknown-email path deliberately runs a
 throwaway comparison so both take the same time, and both return the same
-message.
+message. That comparison's hash is generated at startup rather than hardcoded,
+because bcrypt stores the cost inside the hash string: a pasted literal would
+quietly stop matching the cost real passwords use the day that cost is raised,
+and the gap would come back wider than before. Its salt differs on every boot,
+which changes nothing — bcrypt runs 2^cost iterations regardless.
+
+**Cost rotation is not implemented.** Raising the bcrypt cost never invalidates
+stored passwords, since each hash carries the cost it was made with and
+verification reads it from there. It does leave two generations in the table,
+and their different verification times leak how old an account is, which the
+throwaway comparison cannot mask. Closing that means re-hashing on successful
+login, the only moment the plaintext is in hand, whenever the stored cost is
+below the current one. It is left out deliberately: the cost has never moved
+here, and a rotation path with nothing to rotate is dead code.
 
 **Signalling the loop point.** Recycling a finite pool means splicing the last
 segment onto the first, where the media timestamps drop back by the length of
