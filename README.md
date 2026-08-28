@@ -35,19 +35,19 @@ encoder would.
 
 ### Full stack in Docker
 
-Unzip the media archive anywhere on the machine. Write the directory it
-produced — the one holding `segment.m3u8` and the 64 `.ts` files — into a `.env`
-file at the repository root, and start the stack:
+Unzip the media archive anywhere on the machine, then:
 
 ```bash
-echo 'SEGMENTS_DIR=/path/to/hls test' > .env
+cp .env.example .env
+# set SEGMENTS_DIR to the directory the archive produced, the one
+# holding segment.m3u8 and the 64 .ts files it names
 docker compose up --build
 ```
 
-That is the whole thing: one line of configuration, nothing else. Open
-<http://localhost:8080>, register an account and the player starts. The path
-needs no quoting inside `.env`, and the same two commands work on Linux, macOS
-and Windows PowerShell.
+`.env.example` is otherwise ready to use — every other line in it already
+carries the value the app would pick on its own, so `SEGMENTS_DIR` is the only
+one to fill in. It takes an unquoted path, spaces included. Open
+<http://localhost:8080>, register an account and the player starts.
 
 Passing the variable inline instead (`SEGMENTS_DIR=… docker compose up`) works
 just as well for the first command, but compose interpolates the file on every
