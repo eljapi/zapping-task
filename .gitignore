@@ -1,5 +1,6 @@
-# HLS media assets (~480MB) — required at runtime, not tracked in git
-hls test/**/*.ts
+# HLS media assets (~500MB) — external input, never tracked. Unzip the provided
+# archive anywhere and point SEGMENTS_DIR at it; this is only where mine sits.
+/hls test/
 
 # Compiled binaries
 /server

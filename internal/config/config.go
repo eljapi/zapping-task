@@ -29,7 +29,6 @@ const (
 const (
 	defaultListenAddr      = ":8080"
 	defaultDatabaseURL     = "postgres://zapping:zapping@localhost:5432/zapping"
-	defaultSegmentsDir     = "hls test/hls test"
 	defaultWebDir          = "web"
 	defaultCookieSecure    = true
 	defaultTickInterval    = 10 * time.Second
@@ -54,8 +53,19 @@ func Load() (*Config, error) {
 	cfg := &Config{
 		ListenAddr:  getenv(envListenAddr, defaultListenAddr),
 		DatabaseURL: getenv(envDatabaseURL, defaultDatabaseURL),
-		SegmentsDir: getenv(envSegmentsDir, defaultSegmentsDir),
 		WebDir:      getenv(envWebDir, defaultWebDir),
+	}
+
+	/*
+		The only setting with no default. Every other one names something this
+		repository ships or creates, so a fallback is always meaningful; the media
+		is half a gigabyte of external input that lives wherever the person running
+		this unpacked it. A default would only be a path that happens to be wrong,
+		failing later and less clearly than saying so here
+	*/
+	cfg.SegmentsDir = os.Getenv(envSegmentsDir)
+	if cfg.SegmentsDir == "" {
+		return nil, fmt.Errorf("%s is required: point it at the directory holding segment.m3u8 and the .ts files it names", envSegmentsDir)
 	}
 
 	secure, err := getenvBool(envCookieSecure, defaultCookieSecure)

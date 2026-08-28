@@ -31,7 +31,7 @@ services:
       TICK_INTERVAL: "${TICK_INTERVAL:-10s}"
       CHAT_HISTORY_SIZE: "${CHAT_HISTORY_SIZE:-50}"
     volumes:
-      - "${SEGMENTS_DIR:-./hls test/hls test}:/segments:ro"
+      - "${SEGMENTS_DIR:?set it to the directory holding segment.m3u8 and its .ts files}:/segments:ro"
 
 volumes:
   pgdata:

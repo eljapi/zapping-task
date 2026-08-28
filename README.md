@@ -26,54 +26,53 @@ encoder would.
 
 - Go 1.25 or newer (only for running the app outside Docker).
 - Docker with Compose — runs Postgres alone, or the whole stack.
-- The 64 `.ts` segment files. **They are not in this repository** — 480 MB of
-  media does not belong in git. Drop them into `hls test/hls test/`, next to the
-  `segment.m3u8` that is tracked, and nothing else needs configuring. The
-  directory is only a default: any name, anywhere on the machine, works through
-  `SEGMENTS_DIR`, as long as the `.ts` files and the playlist that names them
-  sit together. The server refuses to start if any of them is missing.
+- The HLS media archive. **None of it is in this repository** — half a gigabyte
+  of video does not belong in git, and neither does the playlist that indexes it.
+  Unzip it wherever you like; `SEGMENTS_DIR` is how you say where. The server
+  refuses to start if that directory is missing a file the playlist names.
 
 ## Running
 
 ### Full stack in Docker
 
-Drop the 64 `.ts` files into `hls test/hls test/` (next to the `segment.m3u8`
-that is already in the repository), then, from the repository root:
+Unzip the media archive anywhere on the machine. Write the directory it
+produced — the one holding `segment.m3u8` and the 64 `.ts` files — into a `.env`
+file at the repository root, and start the stack:
 
 ```bash
+echo 'SEGMENTS_DIR=/path/to/hls test' > .env
 docker compose up --build
 ```
 
-That is the whole thing — no environment variables, no `.env`, and the same
-command on Linux, macOS and Windows PowerShell. Open <http://localhost:8080>,
-register an account and the player starts.
+That is the whole thing: one line of configuration, nothing else. Open
+<http://localhost:8080>, register an account and the player starts. The path
+needs no quoting inside `.env`, and the same two commands work on Linux, macOS
+and Windows PowerShell.
+
+Passing the variable inline instead (`SEGMENTS_DIR=… docker compose up`) works
+just as well for the first command, but compose interpolates the file on every
+invocation, so `logs`, `ps` and `down` would each need it too. The `.env` file
+is there so they do not.
 
 `docker compose up` builds the app image and starts two services: `db`
 (plain Postgres 17) and `app` (the Go binary, frontend included). The app runs
 its embedded goose migrations against the database on startup, so the schema is
 created on first boot and left alone afterwards. The `.ts` files are not in the
-image — they are bind-mounted read-only into `/segments` from the path in
-`SEGMENTS_DIR`, which defaults to `./hls test/hls test` and is resolved by
-compose relative to `docker-compose.yml`. Set it only to keep the media
-somewhere else:
-
-```bash
-SEGMENTS_DIR=/media/hls docker compose up --build     # bash / zsh
-$env:SEGMENTS_DIR="C:\media\hls"; docker compose up --build   # PowerShell
-```
-
-Copy `.env.example` to `.env` if you would rather not repeat that, or any of
-the other settings, on every run.
+image — they are bind-mounted read-only into `/segments` from `SEGMENTS_DIR`.
+A relative path there is resolved by compose against `docker-compose.yml`, not
+against the shell's working directory, so an absolute one is the safer thing to
+give it. Leaving the variable unset stops compose before anything is built,
+naming what it wanted.
 
 ### App on the host, Postgres in Docker
 
 ```bash
-docker compose up -d db     # Postgres on :5432
-go run ./cmd/server         # listens on :8080
+docker compose up -d db                                  # Postgres on :5432
+SEGMENTS_DIR="/path/to/hls test" go run ./cmd/server     # listens on :8080
 ```
 
-Paths are resolved relative to the working directory, so run the server from
-the repository root. The server applies migrations itself, so a bare `db`
+`WEB_DIR` defaults to a relative path, so run the server from the repository
+root. The server applies migrations itself, so a bare `db`
 container with an empty volume is enough.
 
 ### Migrations
@@ -92,15 +91,16 @@ go run github.com/pressly/goose/v3/cmd/goose@latest \
 
 ### Configuration
 
-Every setting falls back to a working local default, so nothing needs to be set
-for development. `internal/config` reads them once at startup, parses and
-validates, and fails fast on a bad value.
+`SEGMENTS_DIR` is required; every other setting falls back to a working local
+default, so it is the only one that has to be set for development.
+`internal/config` reads them once at startup, parses and validates, and fails
+fast on a bad value.
 
 | Variable | Default | Notes |
 |---|---|---|
 | `LISTEN_ADDR` | `:8080` | Address the HTTP server binds to |
 | `DATABASE_URL` | `postgres://zapping:zapping@localhost:5432/zapping` | |
-| `SEGMENTS_DIR` | `hls test/hls test` | Directory holding the `.ts` files and `segment.m3u8` |
+| `SEGMENTS_DIR` | **required** | Directory holding `segment.m3u8` and the `.ts` files it names |
 | `WEB_DIR` | `web` | Directory served for pages and `/static/` |
 | `COOKIE_SECURE` | `true` | `false` to send the session cookie over plain HTTP from a non-localhost host |
 | `TICK_INTERVAL` | `10s` | How often the live window advances one segment (Go duration syntax) |
@@ -205,12 +205,15 @@ strictly stronger than normalising the path with `filepath.Base`, which would
 still happily serve any other file that happens to sit in the segments
 directory.
 
-**Fail at boot, not at the first segment.** `segment.m3u8` is tracked but the
-media it names is not, so a fresh checkout parses 64 valid segments with nothing
-behind them. Left alone, the server would boot, answer the playlist with a 200
-and 404 every segment, and the player would spin forever with nothing to report.
-`LoadPool` stats every file it just parsed and refuses to start, naming the first
-one missing and the directory it looked in.
+**Fail at boot, not at the first segment.** Reaching the playlist proves
+nothing about the media beside it: a partial unzip, or a directory holding the
+`.m3u8` alone, parses 64 valid segments with nothing behind them. Left alone,
+the server would boot, answer the playlist with a 200 and 404 every segment, and
+the player would spin forever with nothing to report. `LoadPool` stats every
+file it just parsed and refuses to start, naming the first one missing and the
+directory it looked in. `SEGMENTS_DIR` itself is required for the same reason —
+it names half a gigabyte that cannot ship with the code, so any default would be
+a path that merely happens to be wrong.
 
 **Memory.** Segment bytes are never preloaded — 480 MB of media stays on disk.
 Only parsed metadata lives in RAM, and `http.ServeFile` streams each segment

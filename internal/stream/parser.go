@@ -13,7 +13,7 @@ import (
 func LoadPool(path string) (*Pool, error) {
 	file, fileError := os.Open(path)
 	if fileError != nil {
-		return nil, fileError
+		return nil, fmt.Errorf("opening the playlist: %w (SEGMENTS_DIR has to name the directory holding segment.m3u8 and its .ts files)", fileError)
 	}
 	defer file.Close()
 
@@ -53,11 +53,11 @@ func LoadPool(path string) (*Pool, error) {
 }
 
 /*
-segment.m3u8 is tracked in git but the 480MB of .ts files are not, so a fresh
-checkout parses 64 perfectly valid segments with no media behind them. Without
-this the server boots, answers the playlist with a 200 and 404s every segment,
-and the player spins forever with nothing to report. Better to refuse to start
-and say which file is missing
+A playlist reachable at SEGMENTS_DIR says nothing about the media next to it:
+a partial unzip, or a directory holding the .m3u8 alone, parses 64 perfectly
+valid segments with nothing behind them. Without this the server boots, answers
+the playlist with a 200 and 404s every segment, and the player spins forever
+with nothing to report. Better to refuse to start and say which file is missing
 */
 func verifySegments(dir string, segments []Segment) error {
 	for _, segment := range segments {
