@@ -7,6 +7,13 @@ import (
 	"time"
 )
 
+/*
+Every setting is read once here, at startup, and travels afterwards inside a
+Config value. No package calls os.Getenv on its own, so there is a single place
+that knows the names of the variables and a single moment where a bad value can
+stop the process
+*/
+
 const PlaylistFilename = "segment.m3u8"
 
 const (
@@ -39,6 +46,10 @@ type Config struct {
 	ChatHistorySize int
 }
 
+/*
+Fail fast: a wrong duration or a negative size kills the boot instead of
+surfacing later as a stream that never advances
+*/
 func Load() (*Config, error) {
 	cfg := &Config{
 		ListenAddr:  getenv(envListenAddr, defaultListenAddr),
@@ -74,6 +85,10 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
+/*
+os.Getenv cannot tell "unset" from "set to empty", and for every one of these
+settings an empty string is not a usable value, so both cases take the default
+*/
 func getenv(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {
 		return value

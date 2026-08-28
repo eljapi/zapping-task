@@ -23,6 +23,12 @@ func NewSessionID() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
+/*
+HttpOnly keeps the value out of document.cookie, so a XSS cannot read the session.
+Secure refuses to send it over plain HTTP (configurable, because docker on a
+non-localhost host has no TLS). SameSite=Strict means the cookie does not travel
+on requests started by another site, which is what stops CSRF here
+*/
 func (a *Auth) setSessionCookie(w http.ResponseWriter, id string, expires time.Time) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     SessionCookie,
@@ -35,6 +41,10 @@ func (a *Auth) setSessionCookie(w http.ResponseWriter, id string, expires time.T
 	})
 }
 
+/*
+A cookie is deleted by overwriting it with MaxAge -1, and the attributes must
+match the ones it was set with or the browser writes a second cookie instead
+*/
 func (a *Auth) clearSessionCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     SessionCookie,

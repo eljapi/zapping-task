@@ -50,6 +50,7 @@ func (a *Auth) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	user, err := a.store.UserByEmail(r.Context(), email)
 	if err != nil {
+		/*Unknown email: same duration and same message as a wrong password*/
 		burnTime(password)
 		weberr.Redirect(w, r, "/login", weberr.CodeInvalid)
 		return
@@ -72,6 +73,10 @@ func (a *Auth) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
+/*
+Signup and login both end here, so a new account is logged in straight away and
+there is one single place that creates a session row and sets the cookie
+*/
 func (a *Auth) startSession(w http.ResponseWriter, r *http.Request, userID int64) {
 	id, err := NewSessionID()
 	if err != nil {

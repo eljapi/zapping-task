@@ -23,6 +23,10 @@ func (c *Chat) MessagesHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(c.state.Messages())
 }
 
+/*
+The author is taken from the session the middleware put in the context, never
+from the form, otherwise anybody could post under someone else's name
+*/
 func (c *Chat) SendHandler(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.UserFrom(r.Context())
 	if !ok {

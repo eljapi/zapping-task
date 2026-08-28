@@ -21,6 +21,10 @@ func (s *Store) CreateSession(ctx context.Context, id string, userID int64, expi
 }
 
 func (s *Store) SessionUser(ctx context.Context, sessionID string) (*User, error) {
+	/*
+		Expiry is checked in SQL, not in Go: an expired session simply returns no
+		row, so there is no way to forget the comparison at a call site
+	*/
 	query := `SELECT u.id, u.name, u.email, u.password_hash
 	          FROM sessions s
 	          JOIN users u ON u.id = s.user_id
