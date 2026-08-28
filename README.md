@@ -34,17 +34,33 @@ encoder would.
 
 ### Full stack in Docker
 
+Drop the 64 `.ts` files into `hls test/hls test/` (next to the `segment.m3u8`
+that is already in the repository), then, from the repository root:
+
 ```bash
-cp .env.example .env                 # optional, only to override defaults
-SEGMENTS_DIR="$PWD/hls test/hls test" docker compose up --build
+docker compose up --build
 ```
+
+That is the whole thing — no environment variables, no `.env`, and the same
+command on Linux, macOS and Windows PowerShell. Open <http://localhost:8080>,
+register an account and the player starts.
 
 `docker compose up` builds the app image and starts two services: `db`
 (plain Postgres 17) and `app` (the Go binary, frontend included). The app runs
 its embedded goose migrations against the database on startup, so the schema is
 created on first boot and left alone afterwards. The `.ts` files are not in the
-image — they are bind-mounted read-only from `SEGMENTS_DIR` on the host into
-`/segments`. Open <http://localhost:8080>.
+image — they are bind-mounted read-only into `/segments` from the path in
+`SEGMENTS_DIR`, which defaults to `./hls test/hls test` and is resolved by
+compose relative to `docker-compose.yml`. Set it only to keep the media
+somewhere else:
+
+```bash
+SEGMENTS_DIR=/media/hls docker compose up --build     # bash / zsh
+$env:SEGMENTS_DIR="C:\media\hls"; docker compose up --build   # PowerShell
+```
+
+Copy `.env.example` to `.env` if you would rather not repeat that, or any of
+the other settings, on every run.
 
 ### App on the host, Postgres in Docker
 
